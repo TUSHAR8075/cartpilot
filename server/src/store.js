@@ -1,7 +1,33 @@
 // Session state (in memory) + order history (MongoDB if MONGODB_URI is set, else memory).
 import mongoose from "mongoose";
 
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+// Sessions (chat history, cart, Autopilot rules/watches/vault id) are kept in memory
+// and snapshotted to server/.data/sessions.json so restarts don't lose them.
+const DATA_FILE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../.data/sessions.json");
 const sessions = new Map();
+try {
+  for (const s of JSON.parse(fs.readFileSync(DATA_FILE, "utf8"))) sessions.set(s.id, s);
+  console.log(`[store] restored ${sessions.size} session(s)`);
+} catch {
+  /* first run */
+}
+let saveTimer = null;
+export function persistSessions() {
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => {
+    try {
+      fs.mkdirSync(path.dirname(DATA_FILE), { recursive: true });
+      fs.writeFileSync(DATA_FILE, JSON.stringify([...sessions.values()]));
+    } catch (e) {
+      console.warn("[store] could not persist sessions:", e.message);
+    }
+  }, 300);
+}
+setInterval(persistSessions, 5000).unref();
 
 export function getSession(id) {
   if (!sessions.has(id)) {
@@ -15,6 +41,8 @@ export function getSession(id) {
   }
   return sessions.get(id);
 }
+
+export const allSessions = () => sessions.values();
 
 export const cartTotalCents = (cart) => cart.reduce((s, l) => s + l.priceCents * l.qty, 0);
 
@@ -40,6 +68,7 @@ export async function initDb() {
         lines: Array,
         payerEmail: String,
         refunds: Array,
+        source: String,
       },
       { timestamps: true }
     )

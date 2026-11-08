@@ -88,4 +88,33 @@ export async function searchProducts({ query, max_price, min_price, limit = 5 })
 }
 
 export const getProduct = (id) => productCache.get(id) || null;
+
+/** Latest price for a product (used by the Autopilot watcher). */
+export async function getCurrentPrice(id) {
+  const cached = productCache.get(id);
+  const isDemo = DEMO.some((d) => d.id === id);
+  if (process.env.CHANNEL3_API_KEY && cached && !isDemo) {
+    try {
+      const res = await fetch(`https://api.trychannel3.com/v1/products/${encodeURIComponent(id)}`, {
+        headers: { "x-api-key": process.env.CHANNEL3_API_KEY },
+      });
+      if (res.ok) {
+        const fresh = normalizeChannel3(await res.json());
+        if (fresh.price > 0) productCache.set(id, { ...cached, ...fresh });
+        return fresh.price || cached.price;
+      }
+    } catch (e) {
+      console.warn("[catalog] price refresh failed:", e.message);
+    }
+  }
+  return cached ? cached.price : null;
+}
+
+/** Demo-only: simulate a price change in the built-in catalog (for live demos). */
+export function setDemoPrice(id, price) {
+  const p = productCache.get(id);
+  if (!p || !DEMO.some((d) => d.id === id)) throw new Error("Only demo-catalog products can be repriced");
+  p.price = Number(Number(price).toFixed(2));
+  return p;
+}
 export const catalogSource = () => (process.env.CHANNEL3_API_KEY ? "channel3" : "demo");

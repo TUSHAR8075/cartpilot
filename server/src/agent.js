@@ -15,17 +15,24 @@ How you work:
 - Before checkout, summarise the cart and total and ask for confirmation. Call checkout only after the user says yes.
 - After checkout, tell the user to approve the payment with the PayPal button. You cannot capture payment yourself.
 - Refunds: confirm order and amount with the user, then call refund_order.
+- Autopilot: the shopper can save PayPal once (the "Connect PayPal" button in the Autopilot panel) and set spending limits.
+  You can then create price watches; Autopilot buys automatically when a target is hit, never above the
+  per-order or monthly limits (enforced in code). Confirm product, target price and quantity before creating a watch.
+  Set limits only to amounts the shopper states. Autopilot purchases can be undone (refunded) from the activity log or via refund_order.
 - Prices are in USD. Be concise: short paragraphs or bullets, no long essays.`;
 
 export async function chat(session, userText) {
   const events = [];
   const emit = (e) => events.push(e);
-  session.messages.push({ role: "user", content: userText });
+  // Events that happened between turns (e.g. Autopilot purchases) are passed along as context.
+  const notes = session.notes?.splice(0) || [];
+  const content = notes.length ? `[system events since last message: ${notes.join(" | ")}]\n\n${userText}` : userText;
+  session.messages.push({ role: "user", content });
 
   for (let step = 0; step < MAX_STEPS; step++) {
     const res = await client.messages.create({
       model: MODEL(),
-      max_tokens: 1024,
+      max_tokens: 1500,
       system: SYSTEM,
       tools: toolDefs,
       messages: session.messages,

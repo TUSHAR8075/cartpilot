@@ -78,6 +78,80 @@ export async function createOrder(lines, { description = "CartPilot order" } = {
   });
 }
 
+// ---------- PayPal Vault (save PayPal for future, merchant-initiated purchases) ----------
+const reqId = () => `cp-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
+/** Step 1: setup token the buyer approves in the PayPal popup (no money moves). */
+export function createSetupToken({ returnUrl = "https://example.com/return", cancelUrl = "https://example.com/cancel" } = {}) {
+  return ppFetch("/v3/vault/setup-tokens", {
+    method: "POST",
+    headers: { "PayPal-Request-Id": reqId() },
+    body: {
+      payment_source: {
+        paypal: {
+          description: "CartPilot Autopilot: buys items for you within the limits you set",
+          usage_pattern: "IMMEDIATE",
+          usage_type: "MERCHANT",
+          customer_type: "CONSUMER",
+          permit_multiple_payment_tokens: true,
+          experience_context: {
+            brand_name: "CartPilot",
+            return_url: returnUrl,
+            cancel_url: cancelUrl,
+          },
+        },
+      },
+    },
+  });
+}
+
+/** Step 2: exchange the approved setup token for a long-lived payment token (vault id). */
+export function createPaymentToken(setupTokenId) {
+  return ppFetch("/v3/vault/payment-tokens", {
+    method: "POST",
+    headers: { "PayPal-Request-Id": reqId() },
+    body: { payment_source: { token: { id: setupTokenId, type: "SETUP_TOKEN" } } },
+  });
+}
+
+/** Revoke: deletes the saved payment method at PayPal. */
+export const deletePaymentToken = (vaultId) =>
+  ppFetch(`/v3/vault/payment-tokens/${vaultId}`, { method: "DELETE" });
+
+/** Merchant-initiated purchase with the saved PayPal account. Returns the completed order. */
+export async function chargeVaulted(lines, vaultId, { description = "CartPilot Autopilot purchase" } = {}) {
+  const currency_code = CURRENCY();
+  const totalCents = lines.reduce((s, l) => s + l.priceCents * l.qty, 0);
+  let order = await ppFetch("/v2/checkout/orders", {
+    method: "POST",
+    headers: { "PayPal-Request-Id": reqId() },
+    body: {
+      intent: "CAPTURE",
+      purchase_units: [
+        {
+          description: description.slice(0, 127),
+          amount: {
+            currency_code,
+            value: money(totalCents),
+            breakdown: { item_total: { currency_code, value: money(totalCents) } },
+          },
+          items: lines.map((l) => ({
+            name: l.title.slice(0, 127),
+            sku: String(l.id).slice(0, 127),
+            quantity: String(l.qty),
+            category: "PHYSICAL_GOODS",
+            unit_amount: { currency_code, value: money(l.priceCents) },
+          })),
+        },
+      ],
+      payment_source: { paypal: { vault_id: vaultId } },
+    },
+  });
+  // Vaulted CAPTURE orders normally complete in one call; capture explicitly if not.
+  if (order.status === "APPROVED" || order.status === "CREATED") order = await captureOrder(order.id);
+  return order;
+}
+
 export const getOrder = (orderId) => ppFetch(`/v2/checkout/orders/${orderId}`);
 
 export const captureOrder = (orderId) =>

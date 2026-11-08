@@ -49,3 +49,26 @@ aside { display: flex; flex-direction: column; gap: 16px; overflow-y: auto; min-
 .status.COMPLETED { color: var(--ok); }
 .status.REFUNDED, .status.PARTIALLY_REFUNDED { color: var(--warn); }
 @media (max-width: 860px) { main { grid-template-columns: 1fr; } .app { height: auto; } .chat { height: 70vh; } }
+/* Autopilot */
+.autopilot h3 { display: flex; align-items: center; gap: 8px; }
+.autopilot h4 { margin: 14px 0 6px; font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+.badge { font-size: 11px; padding: 2px 8px; border-radius: 99px; font-weight: 700; }
+.badge.on { background: #e3f6ec; color: var(--ok); }
+.badge.off { background: #eef2f8; color: var(--muted); }
+.rules { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 8px 0 6px; }
+.rules div { background: #f5f7fb; border-radius: 8px; padding: 8px; display: flex; flex-direction: column; gap: 2px; }
+.connected { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 13px; background: #e3f6ec; color: var(--ok); padding: 8px 10px; border-radius: 8px; }
+.connect { margin-top: 6px; }
+.ghost { background: transparent; color: var(--accent); border: 1px solid var(--line); }
+.watch { display: grid; grid-template-columns: 1fr auto; gap: 4px 8px; align-items: center; padding: 8px 0; border-bottom: 1px dashed var(--line); }
+.watch .title { font-size: 13px; font-weight: 600; }
+.watch .muted { font-size: 12px; }
+.watch button { grid-column: 1 / -1; justify-self: start; }
+.status.watching { color: var(--accent); }
+.status.bought { color: var(--ok); }
+.status.blocked, .status.error { color: #b3261e; }
+.status.paused, .status.buying { color: var(--warn); }
+.activity { list-style: none; margin: 0; padding: 0; font-size: 13px; }
+.activity li { display: grid; grid-template-columns: 70px 1fr auto; gap: 8px; align-items: center; padding: 6px 0; border-bottom: 1px dashed var(--line); }
+.activity .when { color: var(--muted); font-family: ui-monospace, monospace; font-size: 11px; }
+.activity li.undone span:nth-child(2) { text-decoration: line-through; color: var(--muted); }

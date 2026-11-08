@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import { PayPalScriptProvider, PayPalButtons } from "@paypal/react-paypal-js";
 import { api } from "./api.js";
+import AutopilotPanel from "./AutopilotPanel.jsx";
 
 const SUGGESTIONS = [
   "I need running shoes and socks for my first 10K, budget $90",
   "Gift for a coffee-loving friend under $50",
   "Set up a home workout kit for under $45",
+  "Autopilot: buy the mechanical keyboard when it drops under $50",
 ];
 
 const TOOL_LABELS = {
@@ -18,10 +20,27 @@ const TOOL_LABELS = {
   get_order_status: (i) => `Checking order ${i.order_id}`,
   list_my_orders: () => "Looking up your orders",
   refund_order: (i) => `Refunding order ${i.order_id}${i.amount ? ` ($${i.amount})` : ""}`,
+  autopilot_status: () => "Checking Autopilot",
+  set_spending_limits: (i) => `Limits: ${i.per_order_limit != null ? `$${i.per_order_limit}/order ` : ""}${i.monthly_limit != null ? `$${i.monthly_limit}/month` : ""}`,
+  create_price_watch: (i) => `Autopilot watch: ${i.product_id} at ≤ $${i.target_price}`,
+  cancel_price_watch: (i) => `Cancelling watch ${i.watch_id}`,
 };
 
 export default function App() {
   const [config, setConfig] = useState(null);
+  useEffect(() => {
+    api.config().then(setConfig).catch((e) => setConfig({ error: e.message }));
+  }, []);
+  if (!config) return null;
+  if (!config.paypalClientId) return <Shop config={config} />;
+  return (
+    <PayPalScriptProvider options={{ clientId: config.paypalClientId, currency: config.currency, intent: "capture" }}>
+      <Shop config={config} />
+    </PayPalScriptProvider>
+  );
+}
+
+function Shop({ config }) {
   const [messages, setMessages] = useState([
     { role: "assistant", text: "Hi! I'm CartPilot. Tell me what you need and your budget. I'll find it, build the cart and check out with PayPal." },
   ]);
@@ -31,11 +50,17 @@ export default function App() {
   const [cart, setCart] = useState({ items: [], total: 0, budget: null });
   const [order, setOrder] = useState(null); // {orderId, total}
   const [orders, setOrders] = useState([]);
+  const [ap, setAp] = useState(null);
   const endRef = useRef(null);
 
   useEffect(() => {
-    api.config().then(setConfig).catch((e) => setConfig({ error: e.message }));
-    api.orders().then(setOrders).catch(() => {});
+    const refresh = () => {
+      api.orders().then(setOrders).catch(() => {});
+      api.autopilot().then(setAp).catch(() => {});
+    };
+    refresh();
+    const t = setInterval(refresh, 4000); // Autopilot acts in the background
+    return () => clearInterval(t);
   }, []);
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -56,6 +81,7 @@ export default function App() {
         if (e.type === "cart") setCart(e.cart);
         if (e.type === "checkout") setOrder({ orderId: e.orderId, total: e.total });
         if (e.type === "refund") api.orders().then(setOrders);
+        if (e.type === "autopilot") api.autopilot().then(setAp);
       }
       if (!pendingOrderId) setOrder(null); // server clears it when the cart changes
       setMessages((m) => [...m, { role: "assistant", text: reply, steps }]);
@@ -160,7 +186,6 @@ export default function App() {
               <div className="checkout">
                 <p>Approve <b>${order.total.toFixed(2)}</b> with PayPal</p>
                 {paypalReady ? (
-                  <PayPalScriptProvider options={{ clientId: config.paypalClientId, currency: config.currency, intent: "capture" }}>
                     <PayPalButtons
                       key={order.orderId}
                       style={{ layout: "vertical", shape: "rect" }}
@@ -168,18 +193,25 @@ export default function App() {
                       onApprove={onApprove}
                       onError={(err) => setMessages((m) => [...m, { role: "assistant", text: `⚠️ PayPal error: ${err?.message || err}`, error: true }])}
                     />
-                  </PayPalScriptProvider>
                 ) : <p className="muted">Set PAYPAL_CLIENT_ID on the server.</p>}
               </div>
             )}
           </div>
+
+          <AutopilotPanel
+            ap={ap}
+            setAp={setAp}
+            paypalReady={!!paypalReady}
+            demoCatalog={config?.catalog === "demo"}
+            onError={(msg) => setMessages((m) => [...m, { role: "assistant", text: `⚠️ ${msg}`, error: true }])}
+          />
 
           <div className="panel">
             <h3>Orders</h3>
             {orders.length === 0 ? <p className="muted">No orders yet.</p> : orders.map((o) => (
               <div className="line" key={o.orderId}>
                 <span className="mono">{o.orderId}</span>
-                <span className={`status ${o.status}`}>{o.status}</span>
+                <span className={`status ${o.status}`}>{o.source === "autopilot" ? "🤖 " : ""}{o.status}</span>
                 <span>${(o.totalCents / 100).toFixed(2)}</span>
               </div>
             ))}

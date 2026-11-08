@@ -5,9 +5,10 @@ import path from "node:path";
 import fs from "node:fs";
 import { fileURLToPath } from "node:url";
 import { chat } from "./agent.js";
-import { captureOrder, verifyWebhook, CURRENCY } from "./paypal.js";
+import { captureOrder, verifyWebhook, CURRENCY, createSetupToken, createPaymentToken } from "./paypal.js";
+import { getAutopilot, view as autopilotView, log as apLog, revoke, undoPurchase, startWatcher } from "./autopilot.js";
 import { getSession, initDb, saveOrder, findOrder, findOrderByCapture, listOrders } from "./store.js";
-import { catalogSource } from "./catalog.js";
+import { catalogSource, setDemoPrice } from "./catalog.js";
 
 const app = express();
 app.use(cors());
@@ -55,10 +56,7 @@ app.post("/api/orders/:orderId/capture", async (req, res) => {
       session.cart = [];
       session.pendingOrderId = null;
       // Let the agent know, so follow-up chat has context.
-      session.messages.push(
-        { role: "user", content: `[system] Payment captured. Order ${orderId} is COMPLETED (capture ${capture?.id}).` },
-        { role: "assistant", content: "Noted: the order is paid." }
-      );
+      (session.notes ||= []).push(`Payment captured. Order ${orderId} is COMPLETED (capture ${capture?.id}).`);
     }
     res.json({ status: data.status, captureId: capture?.id, payer: data.payer?.name });
   } catch (e) {
@@ -66,6 +64,60 @@ app.post("/api/orders/:orderId/capture", async (req, res) => {
     res.status(e.status || 500).json({ error: e.message, details: e.details });
   }
 });
+
+// ---------- Autopilot ----------
+const wrap = (fn) => async (req, res) => {
+  try {
+    await fn(req, res);
+  } catch (e) {
+    console.error("[autopilot api]", e.message, e.details ? JSON.stringify(e.details) : "");
+    res.status(e.status || 400).json({ error: e.message, details: e.details });
+  }
+};
+
+app.get("/api/autopilot", wrap(async (req, res) => res.json(autopilotView(getAutopilot(getSession(sessionId(req)))))));
+
+// Step 1: setup token for the PayPal popup (buyer approves saving PayPal; no charge)
+app.post("/api/autopilot/setup-token", wrap(async (req, res) => {
+  const origin = req.headers.origin || `http://localhost:${process.env.PORT || 8080}`;
+  const st = await createSetupToken({ returnUrl: `${origin}/?vault=return`, cancelUrl: `${origin}/?vault=cancel` });
+  res.json({ id: st.id });
+}));
+
+// Step 2: after approval, exchange for a payment token and store it on the session
+app.post("/api/autopilot/connect", wrap(async (req, res) => {
+  const session = getSession(sessionId(req));
+  const ap = getAutopilot(session);
+  const pt = await createPaymentToken(String(req.body.setupTokenId));
+  ap.vaultId = pt.id;
+  ap.customerId = pt.customer?.id || null;
+  ap.payerEmail = pt.payment_source?.paypal?.email_address || null;
+  ap.connectedAt = new Date().toISOString();
+  ap.watches.filter((w) => w.status === "paused").forEach((w) => (w.status = "watching"));
+  apLog(ap, { type: "connect", text: `PayPal connected${ap.payerEmail ? ` (${ap.payerEmail})` : ""}. Autopilot can now buy within your limits.` });
+  (session.notes ||= []).push("Shopper connected PayPal for Autopilot.");
+  res.json(autopilotView(ap));
+}));
+
+app.post("/api/autopilot/revoke", wrap(async (req, res) => {
+  const ap = getAutopilot(getSession(sessionId(req)));
+  await revoke(ap);
+  res.json(autopilotView(ap));
+}));
+
+app.post("/api/autopilot/undo/:activityId", wrap(async (req, res) => {
+  const session = getSession(sessionId(req));
+  const ap = getAutopilot(session);
+  await undoPurchase(session, ap, req.params.activityId);
+  res.json(autopilotView(ap));
+}));
+
+// Demo helper: simulate a price drop in the built-in demo catalog (disabled when using Channel3)
+app.post("/api/demo/price", wrap(async (req, res) => {
+  if (catalogSource() !== "demo") return res.status(400).json({ error: "Price simulation is only for the demo catalog" });
+  const p = setDemoPrice(String(req.body.productId), req.body.price);
+  res.json({ id: p.id, price: p.price });
+}));
 
 // PayPal webhooks: keeps order state in sync (e.g. refunds done from the PayPal dashboard).
 app.post("/api/webhooks/paypal", async (req, res) => {
@@ -99,4 +151,7 @@ if (fs.existsSync(clientDist)) {
 const PORT = process.env.PORT || 8080;
 initDb()
   .catch((e) => console.error("[store] Mongo connection failed, using memory:", e.message))
-  .finally(() => app.listen(PORT, () => console.log(`CartPilot server on http://localhost:${PORT}`)));
+  .finally(() => {
+    startWatcher();
+    app.listen(PORT, () => console.log(`CartPilot server on http://localhost:${PORT}`));
+  });

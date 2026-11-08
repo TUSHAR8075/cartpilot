@@ -2,6 +2,7 @@
 import { searchProducts, getProduct } from "./catalog.js";
 import { createOrder, getOrder, refundCapture } from "./paypal.js";
 import { cartTotalCents, saveOrder, findOrder, listOrders } from "./store.js";
+import { getAutopilot, view as autopilotView, setLimits, addWatch, cancelWatch } from "./autopilot.js";
 
 const cents = (n) => Math.round(Number(n) * 100);
 const dollars = (c) => Number((c / 100).toFixed(2));
@@ -81,6 +82,39 @@ export const toolDefs = [
       },
       required: ["order_id"],
     },
+  },
+  {
+    name: "autopilot_status",
+    description:
+      "Autopilot state: whether PayPal is connected for autonomous purchases, spending limits, month-to-date spend, price watches and recent activity.",
+    input_schema: { type: "object", properties: {} },
+  },
+  {
+    name: "set_spending_limits",
+    description: "Set Autopilot spending rules in USD. Only call with values the shopper stated.",
+    input_schema: {
+      type: "object",
+      properties: { per_order_limit: { type: "number" }, monthly_limit: { type: "number" } },
+    },
+  },
+  {
+    name: "create_price_watch",
+    description:
+      "Ask Autopilot to buy a product automatically (with the shopper's saved PayPal) once its price is at or below target_price. Only create after the shopper agrees to the product, target price and quantity.",
+    input_schema: {
+      type: "object",
+      properties: {
+        product_id: { type: "string" },
+        target_price: { type: "number", description: "Max unit price in USD" },
+        qty: { type: "integer", minimum: 1 },
+      },
+      required: ["product_id", "target_price"],
+    },
+  },
+  {
+    name: "cancel_price_watch",
+    description: "Stop a price watch by id.",
+    input_schema: { type: "object", properties: { watch_id: { type: "string" } }, required: ["watch_id"] },
   },
 ];
 
@@ -164,8 +198,37 @@ export async function runTool(name, input, session, emit) {
         refunds,
         status: refundedSoFar + amountCents >= o.totalCents ? "REFUNDED" : "PARTIALLY_REFUNDED",
       });
+      const act = session.autopilot?.activity.find((a) => a.type === "purchase" && a.orderId === o.orderId);
+      if (act && refundedSoFar + amountCents >= o.totalCents) act.undone = true;
       emit({ type: "refund", orderId: o.orderId, amount: dollars(amountCents) });
       return { refund_id: r.id, status: r.status, amount: dollars(amountCents) };
+    }
+    case "autopilot_status": {
+      const v = autopilotView(getAutopilot(session));
+      return { ...v, activity: v.activity.slice(0, 8) };
+    }
+    case "set_spending_limits": {
+      const ap = getAutopilot(session);
+      setLimits(ap, input);
+      emit({ type: "autopilot" });
+      return autopilotView(ap);
+    }
+    case "create_price_watch": {
+      const ap = getAutopilot(session);
+      const w = addWatch(ap, input);
+      emit({ type: "autopilot" });
+      return {
+        watch_id: w.id,
+        status: w.status,
+        paypal_connected: !!ap.vaultId,
+        note: ap.vaultId ? "Autopilot will buy automatically when the target is hit." : "Ask the shopper to click 'Connect PayPal' in the Autopilot panel so purchases can run.",
+      };
+    }
+    case "cancel_price_watch": {
+      const ap = getAutopilot(session);
+      cancelWatch(ap, input.watch_id);
+      emit({ type: "autopilot" });
+      return { ok: true };
     }
     default:
       return { error: `Unknown tool ${name}` };

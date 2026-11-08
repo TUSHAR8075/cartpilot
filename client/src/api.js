@@ -26,4 +26,12 @@ export const api = {
   capture: (orderId) =>
     req(`/api/orders/${orderId}/capture`, { method: "POST", body: JSON.stringify({ sessionId: getSessionId() }) }),
   orders: () => req(`/api/orders?sessionId=${getSessionId()}`),
+  autopilot: () => req(`/api/autopilot?sessionId=${getSessionId()}`),
+  setupToken: () => req("/api/autopilot/setup-token", { method: "POST", body: JSON.stringify({ sessionId: getSessionId() }) }),
+  connect: (setupTokenId) =>
+    req("/api/autopilot/connect", { method: "POST", body: JSON.stringify({ sessionId: getSessionId(), setupTokenId }) }),
+  revoke: () => req("/api/autopilot/revoke", { method: "POST", body: JSON.stringify({ sessionId: getSessionId() }) }),
+  undo: (activityId) =>
+    req(`/api/autopilot/undo/${activityId}`, { method: "POST", body: JSON.stringify({ sessionId: getSessionId() }) }),
+  demoPrice: (productId, price) => req("/api/demo/price", { method: "POST", body: JSON.stringify({ productId, price }) }),
 };
