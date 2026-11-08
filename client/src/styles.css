@@ -72,3 +72,7 @@ aside { display: flex; flex-direction: column; gap: 16px; overflow-y: auto; min-
 .activity li { display: grid; grid-template-columns: 70px 1fr auto; gap: 8px; align-items: center; padding: 6px 0; border-bottom: 1px dashed var(--line); }
 .activity .when { color: var(--muted); font-family: ui-monospace, monospace; font-size: 11px; }
 .activity li.undone span:nth-child(2) { text-decoration: line-through; color: var(--muted); }
+.card .meta a { color: var(--accent); text-decoration: none; }
+.card .meta a:hover { text-decoration: underline; }
+.was { color: var(--muted); font-size: 12px; margin-left: 4px; }
+.card img { object-fit: contain; background: #fff; }

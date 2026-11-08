@@ -43,20 +43,31 @@ function demoSearch({ query, max_price, min_price, limit }) {
     .map(({ p }) => p);
 }
 
+// Channel3 Product: { id, title, description, brands:[{id,name}], images:[{url, cleaned_url, is_main_image}],
+//   category:{slug,title}, offers:[{url, domain, price:{price, compare_at_price, currency}, availability}] }
 function normalizeChannel3(prod) {
-  const offer = (prod.offers || [])[0] || {};
-  const rawPrice = typeof offer.price === "object" ? offer.price?.price ?? offer.price?.amount : offer.price;
-  const img = prod.image_url || prod.images?.[0]?.url || prod.images?.[0];
+  const offers = (prod.offers || []).filter((o) => o?.price?.price > 0);
+  const usd = offers.filter((o) => (o.price.currency || "USD").toUpperCase() === "USD");
+  const pool = (usd.length ? usd : offers).sort(
+    (x, y) => (x.availability === "InStock" ? 0 : 1) - (y.availability === "InStock" ? 0 : 1) || x.price.price - y.price.price
+  );
+  const offer = pool[0] || {};
+  const imgs = prod.images || [];
+  const img = imgs.find((i) => i.is_main_image) || imgs[0];
   return {
     id: prod.id,
     title: prod.title,
-    brand: prod.brand_name || prod.brands?.[0]?.name || "",
-    category: prod.category || "",
-    price: Number(rawPrice ?? prod.price ?? 0),
+    brand: prod.brands?.[0]?.name || "",
+    category: prod.category?.title || "",
+    price: Number(offer.price?.price ?? 0),
+    compareAt: offer.price?.compare_at_price ?? null,
+    currency: offer.price?.currency || "USD",
+    inStock: offer.availability ? offer.availability === "InStock" : null,
     rating: null,
-    image: typeof img === "string" ? img : null,
+    image: img ? img.cleaned_url || img.url : null,
     merchant: offer.domain || "",
     url: offer.url || null,
+    offers: offers.length,
   };
 }
 
@@ -66,11 +77,11 @@ async function channel3Search({ query, max_price, min_price, limit }) {
   const res = await fetch("https://api.trychannel3.com/v1/search", {
     method: "POST",
     headers: { "x-api-key": process.env.CHANNEL3_API_KEY, "Content-Type": "application/json" },
-    body: JSON.stringify({ query, limit, ...(Object.keys(filters).length && { filters }) }),
+    body: JSON.stringify({ query, limit: Math.min(limit, 30), ...(Object.keys(filters).length && { filters }) }),
   });
   if (!res.ok) throw new Error(`Channel3 search failed (${res.status})`);
   const data = await res.json();
-  return (data.products || []).map(normalizeChannel3).filter((p) => p.price > 0);
+  return (data.products || []).map(normalizeChannel3).filter((p) => p.price > 0 && p.inStock !== false);
 }
 
 export async function searchProducts({ query, max_price, min_price, limit = 5 }) {

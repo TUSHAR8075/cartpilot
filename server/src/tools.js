@@ -123,7 +123,9 @@ export async function runTool(name, input, session, emit) {
     case "search_products": {
       const products = await searchProducts({ ...input, limit: input.limit || 5 });
       emit({ type: "products", products });
-      return products.map(({ id, title, brand, price, rating, merchant }) => ({ id, title, brand, price, rating, merchant }));
+      return products.map(({ id, title, brand, price, compareAt, rating, merchant, offers }) => ({
+        id, title, brand, price, ...(compareAt && { was: compareAt }), ...(rating && { rating }), merchant, ...(offers > 1 && { offers }),
+      }));
     }
     case "set_budget": {
       session.budgetCents = cents(input.amount);

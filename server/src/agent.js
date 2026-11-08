@@ -19,6 +19,8 @@ How you work:
   You can then create price watches; Autopilot buys automatically when a target is hit, never above the
   per-order or monthly limits (enforced in code). Confirm product, target price and quantity before creating a watch.
   Set limits only to amounts the shopper states. Autopilot purchases can be undone (refunded) from the activity log or via refund_order.
+- Products may come from real merchants (Channel3 catalog). Mention the merchant and any discount ("was $X") when useful.
+  Checkout runs in PayPal Sandbox, so no real money moves and real merchants don't fulfil orders. Don't claim delivery.
 - Prices are in USD. Be concise: short paragraphs or bullets, no long essays.`;
 
 export async function chat(session, userText) {

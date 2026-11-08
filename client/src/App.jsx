@@ -111,7 +111,7 @@ function Shop({ config }) {
       <header>
         <div className="brand">🛒 CartPilot</div>
         <div className="sub">AI shopping agent · pays with PayPal (Sandbox)</div>
-        {config?.catalog && <span className="pill">catalog: {config.catalog}</span>}
+        {config?.catalog && <span className="pill">{config.catalog === "channel3" ? "🛍️ live catalog · Channel3" : "catalog: demo"}</span>}
       </header>
 
       <main>
@@ -154,9 +154,12 @@ function Shop({ config }) {
                   <div className="card" key={p.id}>
                     {p.image && <img src={p.image} alt="" />}
                     <div className="title">{p.title}</div>
-                    <div className="meta">{p.brand}{p.rating ? ` · ★ ${p.rating}` : ""}</div>
+                    <div className="meta">
+                      {p.brand}{p.rating ? ` · ★ ${p.rating}` : ""}
+                      {p.merchant && p.url ? <> · <a href={p.url} target="_blank" rel="noreferrer">{p.merchant}</a></> : null}
+                    </div>
                     <div className="row">
-                      <b>${p.price.toFixed(2)}</b>
+                      <span><b>${p.price.toFixed(2)}</b>{p.compareAt > p.price && <s className="was"> ${Number(p.compareAt).toFixed(2)}</s>}</span>
                       <button className="small" disabled={busy} onClick={() => send(`Add ${p.title} (id ${p.id}) to my cart`)}>Add</button>
                     </div>
                   </div>
