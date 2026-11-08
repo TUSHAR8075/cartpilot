@@ -8,7 +8,7 @@ import { chat } from "./agent.js";
 import { captureOrder, verifyWebhook, CURRENCY, createSetupToken, createPaymentToken } from "./paypal.js";
 import { getAutopilot, view as autopilotView, log as apLog, revoke, undoPurchase, startWatcher } from "./autopilot.js";
 import { getSession, initDb, saveOrder, findOrder, findOrderByCapture, listOrders } from "./store.js";
-import { catalogSource, setDemoPrice } from "./catalog.js";
+import { catalogSource, setDemoPrice, demoSimulationEnabled } from "./catalog.js";
 
 const app = express();
 app.use(cors());
@@ -19,7 +19,7 @@ const sessionId = (req) => String(req.body?.sessionId || req.query.sessionId || 
 app.get("/api/health", (_req, res) => res.json({ ok: true }));
 
 app.get("/api/config", (_req, res) =>
-  res.json({ paypalClientId: process.env.PAYPAL_CLIENT_ID || "", currency: CURRENCY(), catalog: catalogSource() })
+  res.json({ paypalClientId: process.env.PAYPAL_CLIENT_ID || "", currency: CURRENCY(), catalog: catalogSource(), demoPrices: demoSimulationEnabled() })
 );
 
 app.post("/api/chat", async (req, res) => {
@@ -114,9 +114,7 @@ app.post("/api/autopilot/undo/:activityId", wrap(async (req, res) => {
 
 // Demo helper: simulate a price drop in the built-in demo catalog (disabled when using Channel3)
 app.post("/api/demo/price", wrap(async (req, res) => {
-  if (catalogSource() !== "demo") return res.status(400).json({ error: "Price simulation is only for the demo catalog" });
-  const p = setDemoPrice(String(req.body.productId), req.body.price);
-  res.json({ id: p.id, price: p.price });
+  res.json(setDemoPrice(String(req.body.productId), req.body.price));
 }));
 
 // PayPal webhooks: keeps order state in sync (e.g. refunds done from the PayPal dashboard).

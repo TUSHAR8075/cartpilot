@@ -100,8 +100,13 @@ export async function searchProducts({ query, max_price, min_price, limit = 5 })
 
 export const getProduct = (id) => productCache.get(id) || null;
 
+// Demo price overrides (for live demos/videos). Disabled when DEMO_PRICE_SIMULATION=false.
+const priceOverrides = new Map();
+export const demoSimulationEnabled = () => process.env.DEMO_PRICE_SIMULATION !== "false";
+
 /** Latest price for a product (used by the Autopilot watcher). */
 export async function getCurrentPrice(id) {
+  if (priceOverrides.has(id)) return priceOverrides.get(id);
   const cached = productCache.get(id);
   const isDemo = DEMO.some((d) => d.id === id);
   if (process.env.CHANNEL3_API_KEY && cached && !isDemo) {
@@ -121,11 +126,18 @@ export async function getCurrentPrice(id) {
   return cached ? cached.price : null;
 }
 
-/** Demo-only: simulate a price change in the built-in catalog (for live demos). */
+/** Demo-only: simulate a price change (works for demo and live-catalog products; clearly labeled in the UI). */
 export function setDemoPrice(id, price) {
+  if (!demoSimulationEnabled()) throw new Error("Price simulation is disabled");
   const p = productCache.get(id);
-  if (!p || !DEMO.some((d) => d.id === id)) throw new Error("Only demo-catalog products can be repriced");
-  p.price = Number(Number(price).toFixed(2));
-  return p;
+  if (!p) throw new Error("Unknown product");
+  const v = Number(Number(price).toFixed(2));
+  priceOverrides.set(id, v);
+  if (DEMO.some((d) => d.id === id)) p.price = v;
+  return { id, price: v };
+}
+
+export function clearDemoPrice(id) {
+  priceOverrides.delete(id);
 }
 export const catalogSource = () => (process.env.CHANNEL3_API_KEY ? "channel3" : "demo");

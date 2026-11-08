@@ -205,7 +205,7 @@ function Shop({ config }) {
             ap={ap}
             setAp={setAp}
             paypalReady={!!paypalReady}
-            demoCatalog={config?.catalog === "demo"}
+            demoPrices={!!config?.demoPrices}
             onError={(msg) => setMessages((m) => [...m, { role: "assistant", text: `⚠️ ${msg}`, error: true }])}
           />
 

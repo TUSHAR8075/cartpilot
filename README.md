@@ -56,7 +56,7 @@ React (Vite) ── /api/chat ──► Express ──► Claude (tool use loop)
 | **PayPal Vault v3** | Setup tokens + payment tokens to save PayPal for merchant-initiated Autopilot purchases; delete on revoke |
 | **PayPal Webhooks** | Keeps order status in sync, with signature verification |
 | **Anthropic Claude** | The shopping agent: reasons about needs and budget, calls 9 tools in a loop |
-| **Channel3** | Real product catalog search (optional) |
+| **Channel3** | Live product search across real merchants: picks the cheapest in-stock offer, shows real images, merchant links and discounts; Autopilot refreshes prices from the product detail endpoint |
 | **Render** | Hosting (`render.yaml` included) |
 | **MongoDB** | Order history (optional; in-memory otherwise) |
 
@@ -91,7 +91,7 @@ For webhooks, add `https://<your-app>.onrender.com/api/webhooks/paypal` in your 
 **Autopilot (the headline):**
 1. In the Autopilot panel click **PayPal** and approve with the sandbox buyer. Status shows **ON**, nothing is charged.
 2. *"Limits: $60 per order, $100 a month. Buy the mechanical keyboard automatically when it drops under $50."*
-3. Click **Demo: drop price** (demo catalog only). Within about 10 seconds Autopilot buys it, and the activity log and orders show 🤖 COMPLETED.
+3. Click **🧪 Simulate price drop**, a clearly labeled demo helper (disable it with `DEMO_PRICE_SIMULATION=false`). Within about 10 seconds Autopilot buys it, and the activity log and orders show 🤖 COMPLETED.
 4. Click **Undo**. The purchase is refunded. Click **Revoke**. The saved payment method is deleted at PayPal.
 
 **Interactive shopping:**

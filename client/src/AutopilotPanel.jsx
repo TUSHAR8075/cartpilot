@@ -5,7 +5,7 @@ import { api } from "./api.js";
 const ICON = { purchase: "🛍️", refund: "↩️", blocked: "⛔", watch: "👀", rules: "📏", connect: "🔗", revoke: "🔒", error: "⚠️" };
 const time = (iso) => new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 
-export default function AutopilotPanel({ ap, setAp, paypalReady, demoCatalog, onError }) {
+export default function AutopilotPanel({ ap, setAp, paypalReady, demoPrices, onError }) {
   const [busy, setBusy] = useState(null);
   if (!ap) return null;
 
@@ -66,7 +66,7 @@ export default function AutopilotPanel({ ap, setAp, paypalReady, demoCatalog, on
 
       <h4>Watching</h4>
       {active.length === 0 ? (
-        <p className="muted">Ask the agent, e.g. “Buy the mechanical keyboard when it drops under $50”.</p>
+        <p className="muted">Ask the agent, e.g. “Buy this when it drops under $50”.</p>
       ) : (
         active.map((w) => (
           <div className="watch" key={w.id}>
@@ -78,14 +78,14 @@ export default function AutopilotPanel({ ap, setAp, paypalReady, demoCatalog, on
               </div>
             </div>
             <span className={`status ${w.status}`}>{w.status}</span>
-            {w.status === "watching" && demoCatalog && (
+            {w.status === "watching" && demoPrices && (
               <button
                 className="small ghost"
-                title="Demo catalog only: simulates a price drop"
+                title="For demos: simulates the price falling below your target"
                 disabled={busy === w.id}
                 onClick={() => run(w.id, () => api.demoPrice(w.productId, Math.max(0.5, w.targetPrice - 1)))}
               >
-                Demo: drop price
+                🧪 Simulate price drop
               </button>
             )}
           </div>

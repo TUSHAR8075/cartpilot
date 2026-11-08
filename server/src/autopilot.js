@@ -1,6 +1,6 @@
 // CartPilot Autopilot: the agent buys for the shopper while they're away,
 // using a PayPal-vaulted payment method, strictly inside shopper-set spending rules.
-import { getProduct, getCurrentPrice } from "./catalog.js";
+import { getProduct, getCurrentPrice, clearDemoPrice } from "./catalog.js";
 import { chargeVaulted, refundCapture, deletePaymentToken } from "./paypal.js";
 import { allSessions, saveOrder } from "./store.js";
 
@@ -158,6 +158,7 @@ async function evaluate(session) {
       const capture = order.purchase_units?.[0]?.payments?.captures?.[0];
       if (order.status !== "COMPLETED" || !capture) throw new Error(`Order ${order.id} ended as ${order.status}`);
       w.status = "bought";
+      clearDemoPrice(w.productId); // a simulated drop is single-use
       await saveOrder({
         orderId: order.id,
         sessionId: session.id,
