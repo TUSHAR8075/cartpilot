@@ -6,8 +6,8 @@ import fs from "node:fs";
 import { fileURLToPath } from "node:url";
 import { chat } from "./agent.js";
 import { captureOrder, verifyWebhook, CURRENCY, createSetupToken, createPaymentToken } from "./paypal.js";
-import { getAutopilot, view as autopilotView, log as apLog, revoke, undoPurchase, startWatcher } from "./autopilot.js";
-import { getSession, initDb, saveOrder, findOrder, findOrderByCapture, listOrders } from "./store.js";
+import { getAutopilot, view as autopilotView, log as apLog, revoke, undoPurchase, startWatcher, setLimits, cancelWatch } from "./autopilot.js";
+import { getSession, initDb, saveOrder, findOrder, findOrderByCapture, listOrders, persistSessions } from "./store.js";
 import { catalogSource, setDemoPrice, demoSimulationEnabled } from "./catalog.js";
 
 const app = express();
@@ -110,6 +110,60 @@ app.post("/api/autopilot/undo/:activityId", wrap(async (req, res) => {
   const ap = getAutopilot(session);
   await undoPurchase(session, ap, req.params.activityId);
   res.json(autopilotView(ap));
+}));
+
+app.post("/api/autopilot/limits", wrap(async (req, res) => {
+  const ap = getAutopilot(getSession(sessionId(req)));
+  const { per_order_limit, monthly_limit } = req.body;
+  for (const v of [per_order_limit, monthly_limit]) {
+    if (v != null && !(Number(v) > 0 && Number(v) <= 10000)) throw new Error("Limits must be between $0 and $10,000");
+  }
+  setLimits(ap, { per_order_limit, monthly_limit });
+  persistSessions();
+  res.json(autopilotView(ap));
+}));
+
+app.post("/api/autopilot/watches/:watchId/cancel", wrap(async (req, res) => {
+  const ap = getAutopilot(getSession(sessionId(req)));
+  cancelWatch(ap, req.params.watchId);
+  persistSessions();
+  res.json(autopilotView(ap));
+}));
+
+// Dashboard: everything the AG Grid views need in one call
+app.get("/api/dashboard", wrap(async (req, res) => {
+  const session = getSession(sessionId(req));
+  const ap = autopilotView(getAutopilot(session));
+  const orders = (await listOrders(session.id)).map((o) => {
+    const refundedCents = (o.refunds || []).reduce((s, r) => s + (r.cents || 0), 0);
+    return {
+      orderId: o.orderId,
+      createdAt: o.createdAt,
+      source: o.source === "autopilot" ? "autopilot" : "chat",
+      items: (o.lines || []).map((l) => `${l.qty}× ${l.title}`).join(", "),
+      total: (o.totalCents || 0) / 100,
+      refunded: refundedCents / 100,
+      status: o.status,
+      payer: o.payerEmail || null,
+    };
+  });
+  const paid = orders.filter((o) => ["COMPLETED", "PARTIALLY_REFUNDED", "REFUNDED"].includes(o.status));
+  res.json({
+    autopilot: ap,
+    orders,
+    kpis: {
+      spentThisMonth: ap.spentThisMonth,
+      monthlyLimit: ap.monthlyLimit,
+      perOrderLimit: ap.perOrderLimit,
+      paidOrders: paid.length,
+      grossPaid: Number(paid.reduce((s, o) => s + o.total, 0).toFixed(2)),
+      refunded: Number(orders.reduce((s, o) => s + o.refunded, 0).toFixed(2)),
+      autopilotBuys: ap.activity.filter((a) => a.type === "purchase").length,
+      blocked: ap.activity.filter((a) => a.type === "blocked").length,
+      activeWatches: ap.watches.filter((w) => w.status === "watching").length,
+      connected: ap.connected,
+    },
+  });
 }));
 
 // Demo helper: simulate a price drop in the built-in demo catalog (disabled when using Channel3)

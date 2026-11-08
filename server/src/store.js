@@ -5,8 +5,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-// Sessions (chat history, cart, Autopilot rules/watches/vault id) are kept in memory
-// and snapshotted to server/.data/sessions.json so restarts don't lose them.
+// Sessions (chat history, cart, Autopilot rules/watches/vault id) live in memory for speed and are
+// persisted to MongoDB when MONGODB_URI is set, otherwise snapshotted to server/.data/sessions.json.
 const DATA_FILE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../.data/sessions.json");
 const sessions = new Map();
 try {
@@ -16,12 +16,26 @@ try {
   /* first run */
 }
 let saveTimer = null;
+let SessionModel = null;
+const lastSaved = new Map(); // id -> serialized snapshot (skip unchanged writes)
+
 export function persistSessions() {
   clearTimeout(saveTimer);
-  saveTimer = setTimeout(() => {
+  saveTimer = setTimeout(async () => {
     try {
-      fs.mkdirSync(path.dirname(DATA_FILE), { recursive: true });
-      fs.writeFileSync(DATA_FILE, JSON.stringify([...sessions.values()]));
+      if (SessionModel) {
+        const ops = [];
+        for (const sess of sessions.values()) {
+          const json = JSON.stringify(sess);
+          if (lastSaved.get(sess.id) === json) continue;
+          lastSaved.set(sess.id, json);
+          ops.push({ updateOne: { filter: { _id: sess.id }, update: { $set: { data: json } }, upsert: true } });
+        }
+        if (ops.length) await SessionModel.bulkWrite(ops);
+      } else {
+        fs.mkdirSync(path.dirname(DATA_FILE), { recursive: true });
+        fs.writeFileSync(DATA_FILE, JSON.stringify([...sessions.values()]));
+      }
     } catch (e) {
       console.warn("[store] could not persist sessions:", e.message);
     }
@@ -52,10 +66,27 @@ let OrderModel = null;
 
 export async function initDb() {
   if (!process.env.MONGODB_URI) {
-    console.log("[store] MONGODB_URI not set: orders kept in memory");
+    console.log("[store] MONGODB_URI not set: orders in memory, sessions in server/.data");
     return;
   }
-  await mongoose.connect(process.env.MONGODB_URI);
+  await mongoose.connect(process.env.MONGODB_URI, { serverSelectionTimeoutMS: 4000 });
+  SessionModel = mongoose.model(
+    "Session",
+    new mongoose.Schema({ _id: String, data: String }, { timestamps: true, versionKey: false })
+  );
+  const docs = await SessionModel.find().lean();
+  if (docs.length) {
+    sessions.clear();
+    for (const d of docs) {
+      const sess = JSON.parse(d.data);
+      sessions.set(sess.id, sess);
+      lastSaved.set(sess.id, d.data);
+    }
+    console.log(`[store] loaded ${docs.length} session(s) from MongoDB`);
+  } else if (sessions.size) {
+    console.log(`[store] migrating ${sessions.size} session(s) from server/.data to MongoDB`);
+    persistSessions();
+  }
   OrderModel = mongoose.model(
     "Order",
     new mongoose.Schema(
@@ -80,7 +111,8 @@ export async function saveOrder(order) {
   if (OrderModel) {
     return OrderModel.findOneAndUpdate({ orderId: order.orderId }, order, { upsert: true, new: true }).lean();
   }
-  const merged = { ...(memOrders.get(order.orderId) || {}), ...order, updatedAt: new Date() };
+  const prev = memOrders.get(order.orderId);
+  const merged = { createdAt: new Date(), ...(prev || {}), ...order, updatedAt: new Date() };
   memOrders.set(order.orderId, merged);
   return merged;
 }
@@ -97,5 +129,5 @@ export async function findOrderByCapture(captureId) {
 
 export async function listOrders(sessionId) {
   if (OrderModel) return OrderModel.find({ sessionId }).sort({ createdAt: -1 }).lean();
-  return [...memOrders.values()].filter((o) => o.sessionId === sessionId).reverse();
+  return [...memOrders.values()].filter((o) => o.sessionId === sessionId).sort((a, b) => b.createdAt - a.createdAt);
 }

@@ -33,5 +33,10 @@ export const api = {
   revoke: () => req("/api/autopilot/revoke", { method: "POST", body: JSON.stringify({ sessionId: getSessionId() }) }),
   undo: (activityId) =>
     req(`/api/autopilot/undo/${activityId}`, { method: "POST", body: JSON.stringify({ sessionId: getSessionId() }) }),
+  dashboard: () => req(`/api/dashboard?sessionId=${getSessionId()}`),
+  setLimits: (per_order_limit, monthly_limit) =>
+    req("/api/autopilot/limits", { method: "POST", body: JSON.stringify({ sessionId: getSessionId(), per_order_limit, monthly_limit }) }),
+  cancelWatch: (id) =>
+    req(`/api/autopilot/watches/${id}/cancel`, { method: "POST", body: JSON.stringify({ sessionId: getSessionId() }) }),
   demoPrice: (productId, price) => req("/api/demo/price", { method: "POST", body: JSON.stringify({ productId, price }) }),
 };

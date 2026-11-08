@@ -22,7 +22,9 @@ const DEMO = [
   { id: "plant-001", title: "Self-Watering Herb Planter", brand: "Greenly", category: "home", price: 36.0, rating: 4.2, tags: ["gift", "kitchen", "plants"] },
 ].map((p) => ({
   ...p,
-  image: `https://picsum.photos/seed/${p.id}/320/240`,
+  image: null, // demo items get an icon tile; live Channel3 products carry real merchant photos
+  icon: { "running shoes": "👟", socks: "🧦", bottles: "🧴", watches: "⌚", earbuds: "🎧", backpacks: "🎒", coffee: "☕",
+    lamps: "💡", keyboards: "⌨️", mice: "🖱️", yoga: "🧘", fitness: "🏋️", stationery: "📓", home: "🪴" }[p.category] || "📦",
   merchant: "CartPilot Demo Store",
 }));
 
@@ -109,15 +111,15 @@ export async function getCurrentPrice(id) {
   if (priceOverrides.has(id)) return priceOverrides.get(id);
   const cached = productCache.get(id);
   const isDemo = DEMO.some((d) => d.id === id);
-  if (process.env.CHANNEL3_API_KEY && cached && !isDemo) {
+  if (process.env.CHANNEL3_API_KEY && !isDemo) {
     try {
       const res = await fetch(`https://api.trychannel3.com/v1/products/${encodeURIComponent(id)}`, {
         headers: { "x-api-key": process.env.CHANNEL3_API_KEY },
       });
       if (res.ok) {
         const fresh = normalizeChannel3(await res.json());
-        if (fresh.price > 0) productCache.set(id, { ...cached, ...fresh });
-        return fresh.price || cached.price;
+        if (fresh.price > 0) productCache.set(id, { ...(cached || {}), ...fresh });
+        return fresh.price || cached?.price || null;
       }
     } catch (e) {
       console.warn("[catalog] price refresh failed:", e.message);

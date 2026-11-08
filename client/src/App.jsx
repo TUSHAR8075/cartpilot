@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { PayPalScriptProvider, PayPalButtons } from "@paypal/react-paypal-js";
 import { api } from "./api.js";
 import AutopilotPanel from "./AutopilotPanel.jsx";
+import Dashboard from "./Dashboard.jsx";
 
 const SUGGESTIONS = [
   "I need running shoes and socks for my first 10K, budget $90",
@@ -51,6 +52,8 @@ function Shop({ config }) {
   const [order, setOrder] = useState(null); // {orderId, total}
   const [orders, setOrders] = useState([]);
   const [ap, setAp] = useState(null);
+  const [view, setView] = useState("shop");
+  const showError = useCallback((msg) => setMessages((m) => [...m, { role: "assistant", text: `⚠️ ${msg}`, error: true }]), []);
   const endRef = useRef(null);
 
   useEffect(() => {
@@ -111,10 +114,15 @@ function Shop({ config }) {
       <header>
         <div className="brand">🛒 CartPilot</div>
         <div className="sub">AI shopping agent · pays with PayPal (Sandbox)</div>
+        <nav className="tabs">
+          <button className={view === "shop" ? "active" : ""} onClick={() => setView("shop")}>💬 Shop</button>
+          <button className={view === "dash" ? "active" : ""} onClick={() => setView("dash")}>📊 Dashboard</button>
+        </nav>
         {config?.catalog && <span className="pill">{config.catalog === "channel3" ? "🛍️ live catalog · Channel3" : "catalog: demo"}</span>}
       </header>
 
-      <main>
+      {view === "dash" && <Dashboard demoPrices={!!config?.demoPrices} onError={showError} />}
+      <main style={{ display: view === "shop" ? undefined : "none" }}>
         <section className="chat">
           <div className="messages">
             {messages.map((m, i) => (
@@ -152,7 +160,12 @@ function Shop({ config }) {
               <div className="grid">
                 {products.map((p) => (
                   <div className="card" key={p.id}>
-                    {p.image && <img src={p.image} alt="" />}
+                    {p.image ? (
+                      <img src={p.image} alt={p.title} loading="lazy" referrerPolicy="no-referrer"
+                        onError={(e) => { e.currentTarget.replaceWith(Object.assign(document.createElement("div"), { className: "ph", textContent: "🛍️" })); }} />
+                    ) : (
+                      <div className="ph">{p.icon || "🛍️"}</div>
+                    )}
                     <div className="title">{p.title}</div>
                     <div className="meta">
                       {p.brand}{p.rating ? ` · ★ ${p.rating}` : ""}
@@ -206,7 +219,7 @@ function Shop({ config }) {
             setAp={setAp}
             paypalReady={!!paypalReady}
             demoPrices={!!config?.demoPrices}
-            onError={(msg) => setMessages((m) => [...m, { role: "assistant", text: `⚠️ ${msg}`, error: true }])}
+            onError={showError}
           />
 
           <div className="panel">

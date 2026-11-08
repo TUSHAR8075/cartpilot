@@ -19,6 +19,12 @@ Online shopping means 10+ tabs, comparing specs and tracking a budget by hand. A
 - **Every purchase is logged and can be undone**: the activity log has one-click **Undo** (Payments v2 refund); **Revoke** deletes the saved payment method at PayPal and pauses all watches
 - Purchases that would break a rule are **skipped and logged**, never made
 
+### 📊 Dashboard (AG Grid)
+- **KPI tiles**: Autopilot spend vs monthly limit, on/off status, paid orders, autonomous buys, purchases blocked by rules, refunds
+- **Editable spending rules** (per order / per month) and **Revoke PayPal**
+- **AG Grid** tables: **Price watches** (target vs current price, gap to target, simulate a drop, stop), **Orders** (source: 🤖 Autopilot or 💬 Chat, status, refunds), **Activity log** (every Autopilot decision, with **Undo**)
+- Sorting, filters, quick search across grids, pagination and **CSV export**. Updates live every 4 seconds
+
 ### Interactive shopping
 - 💬 **Natural-language shopping**, e.g. *"Running shoes + socks for my first 10K, budget $90"*
 - 🔎 **Live product search** through the Channel3 API, with a built-in demo catalog as fallback
@@ -44,7 +50,7 @@ React (Vite) ── /api/chat ──► Express ──► Claude (tool use loop)
    └─ Undo / Revoke ────────────► Payments v2 refund / Vault v3 DELETE payment token
    └─ PayPal Buttons ─ approve ─► /api/orders/:id/capture ─► PayPal Orders v2 (capture)
                                   /api/webhooks/paypal ◄── PayPal Webhooks
-                                  MongoDB (optional) for order history
+                                  MongoDB: sessions, carts, Autopilot state, orders · AG Grid dashboard
 ```
 
 ## Tools used
@@ -58,7 +64,8 @@ React (Vite) ── /api/chat ──► Express ──► Claude (tool use loop)
 | **Anthropic Claude** | The shopping agent: reasons about needs and budget, calls 9 tools in a loop |
 | **Channel3** | Live product search across real merchants: picks the cheapest in-stock offer, shows real images, merchant links and discounts; Autopilot refreshes prices from the product detail endpoint |
 | **Render** | Hosting (`render.yaml` included) |
-| **MongoDB** | Order history (optional; in-memory otherwise) |
+| **MongoDB** | Persists sessions (chat, carts), Autopilot rules, watches and activity, and the order history |
+| **AG Grid** (Community) | Dashboard grids for watches, orders and the Autopilot activity log, with custom cell renderers, filters, quick search and CSV export |
 
 ## Run locally
 
@@ -68,7 +75,8 @@ React (Vite) ── /api/chat ──► Express ──► Claude (tool use loop)
 2. **Clone and configure**
    ```bash
    git clone <your-repo-url> cartpilot && cd cartpilot
-   cp server/.env.example server/.env   # fill in PAYPAL_CLIENT_ID, PAYPAL_CLIENT_SECRET, ANTHROPIC_API_KEY
+   cp server/.env.example server/.env   # fill in PAYPAL_CLIENT_ID, PAYPAL_CLIENT_SECRET, ANTHROPIC_API_KEY (+ CHANNEL3_API_KEY)
+   # MongoDB: run a local mongod (default URI in .env.example) or use a free MongoDB Atlas cluster
    ```
 3. **Install and run**
    ```bash
