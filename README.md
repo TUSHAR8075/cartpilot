@@ -1,0 +1,88 @@
+# 🛒 CartPilot: an AI shopping agent that checks out with PayPal
+
+> Tell it what you need and your budget. CartPilot searches products, compares them, builds a cart within budget and creates a real **PayPal order**. You approve it in one tap, and it can handle refunds later.
+
+**Built for:** *Build What's Next with PayPal and AI*. **Categories:** Agentic Commerce · PayPal + AI · Channel3 · Render
+
+---
+
+## The problem
+Online shopping means 10+ tabs, comparing specs and tracking a budget by hand. AI assistants can *recommend* products, but they stop before the hard part: **paying safely**. CartPilot closes that loop. The agent does the legwork, PayPal handles the money, and **the human always approves the payment**.
+
+## Features
+- 💬 **Natural-language shopping**, e.g. *"Running shoes + socks for my first 10K, budget $90"*
+- 🔎 **Live product search** through the Channel3 API, with a built-in demo catalog as fallback
+- 💰 **Budget guardrails**: the agent cannot add items that push the cart over budget (enforced server-side)
+- 🧾 **PayPal Orders v2 checkout** with itemized line items, created by the agent
+- ✅ **Human-in-the-loop payment**: the shopper approves in PayPal Smart Buttons, then the server captures
+- ↩️ **Agentic refunds**: *"Refund the socks from my last order"* triggers a partial refund through the Payments v2 API
+- 🔔 **PayPal Webhooks** (`PAYMENT.CAPTURE.COMPLETED`, `PAYMENT.CAPTURE.REFUNDED`) with signature verification
+- 🧠 **Transparent agent steps**: every tool call is shown in the chat ("Searching…", "Creating PayPal order…")
+
+## Architecture
+```
+React (Vite) ── /api/chat ──► Express ──► Claude (tool use loop)
+   │                              │            ├─ search_products ─► Channel3 / demo catalog
+   │                              │            ├─ set_budget / add_to_cart / remove_from_cart / view_cart
+   │                              │            ├─ checkout ───────► PayPal Orders v2 (create)
+   │                              │            ├─ get_order_status► PayPal Orders v2 (get)
+   │                              │            └─ refund_order ───► PayPal Payments v2 (refund)
+   └─ PayPal Buttons ─ approve ─► /api/orders/:id/capture ─► PayPal Orders v2 (capture)
+                                  /api/webhooks/paypal ◄── PayPal Webhooks
+                                  MongoDB (optional) for order history
+```
+
+## Tools used
+| Tool | How it's used |
+|---|---|
+| **PayPal Orders v2** | Agent creates itemized orders; server captures after buyer approval |
+| **PayPal JS SDK** (`@paypal/react-paypal-js`) | Smart Buttons for buyer approval |
+| **PayPal Payments v2** | Full or partial refunds triggered by the agent |
+| **PayPal Webhooks** | Keeps order status in sync, with signature verification |
+| **Anthropic Claude** | The shopping agent: reasons about needs and budget, calls 9 tools in a loop |
+| **Channel3** | Real product catalog search (optional) |
+| **Render** | Hosting (`render.yaml` included) |
+| **MongoDB** | Order history (optional; in-memory otherwise) |
+
+## Run locally
+
+**Prerequisites:** Node 18+, a [PayPal Developer](https://developer.paypal.com) account and an Anthropic API key.
+
+1. **PayPal Sandbox app:** Dashboard → Apps & Credentials → *Sandbox* → Create App. Copy the Client ID and Secret. Under *Sandbox accounts*, note the **Personal** (buyer) account email and password for testing.
+2. **Clone and configure**
+   ```bash
+   git clone <your-repo-url> cartpilot && cd cartpilot
+   cp server/.env.example server/.env   # fill in PAYPAL_CLIENT_ID, PAYPAL_CLIENT_SECRET, ANTHROPIC_API_KEY
+   ```
+3. **Install and run**
+   ```bash
+   npm install            # installs concurrently
+   npm run install:all
+   npm run dev            # server :8080, client :5173
+   ```
+4. Open **http://localhost:5173**, try a suggestion, say *"yes, check out"* and pay with the **sandbox buyer account**.
+
+### Production build
+```bash
+npm run build && npm start   # Express serves client/dist on :8080
+```
+
+### Deploy to Render
+New → Blueprint → select this repo (it uses `render.yaml`), then fill in the secret env vars.
+For webhooks, add `https://<your-app>.onrender.com/api/webhooks/paypal` in your PayPal sandbox app, subscribe to `PAYMENT.CAPTURE.*` and set `PAYPAL_WEBHOOK_ID`.
+
+## Demo script (under 3 minutes)
+1. *"I need running shoes and socks for my first 10K, budget $90."* The agent sets the budget, searches and compares.
+2. *"Go with the Strider and the merino socks."* The cart fills and the budget meter updates.
+3. *"Add the GPS watch too."* The agent refuses because it's over budget (guardrail).
+4. *"Check out."* A PayPal order is created. Approve it with the sandbox buyer. Status shows **COMPLETED**.
+5. *"Refund the socks."* A partial refund goes through. Status shows **PARTIALLY_REFUNDED**.
+
+## Safety design
+- Prices are taken from the server-side product cache, never from the model's text
+- Budget is enforced in code, not just in the prompt
+- The agent can **create** orders but never **captures** them. Capture happens only after the buyer approves in PayPal
+- Refunds are limited to the shopper's own captured orders and to the remaining refundable balance
+
+## License
+MIT. See [LICENSE](LICENSE).
