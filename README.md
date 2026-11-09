@@ -4,7 +4,9 @@
 >
 > **Autopilot:** save PayPal once and set spending limits. The agent then watches prices and **buys for you while you're away**, never above your limits, with every purchase logged and undoable.
 
-**Built for:** *Build What's Next with PayPal and AI*. **Categories:** Agentic Commerce · PayPal + AI · Channel3 · Render
+**Built for:** *Build What's Next with PayPal and AI*. **Categories:** Agentic Commerce · PayPal + AI · AG Grid · Channel3 · Render
+
+**🔗 Live demo:** https://cartpilot-9qpb.onrender.com (free hosting, so the first load can take about 50 seconds) · **🎬 Demo video:** see the Devpost submission · **License:** MIT
 
 ---
 
@@ -34,6 +36,30 @@ Online shopping means 10+ tabs, comparing specs and tracking a budget by hand. A
 - ↩️ **Agentic refunds**: *"Refund the socks from my last order"* triggers a partial refund through the Payments v2 API
 - 🔔 **PayPal Webhooks** (`PAYMENT.CAPTURE.COMPLETED`, `PAYMENT.CAPTURE.REFUNDED`) with signature verification
 - 🧠 **Transparent agent steps**: every tool call is shown in the chat ("Searching…", "Creating PayPal order…")
+
+## How we use PayPal (Sandbox)
+| PayPal tool | Used for |
+|---|---|
+| **REST OAuth 2.0** (`/v1/oauth2/token`) | Server authentication with the sandbox app credentials |
+| **Orders API v2** (`POST /v2/checkout/orders`, `.../capture`, `GET .../{id}`) | The agent's `checkout` tool creates itemized orders; the server captures after buyer approval; `get_order_status` |
+| **Orders v2 with `payment_source.paypal.vault_id`** | Autopilot's merchant-initiated purchases with the saved PayPal account |
+| **JavaScript SDK** (`@paypal/react-paypal-js` Smart Buttons) | Buyer approval for checkout, and for saving PayPal (`createVaultSetupToken`) |
+| **Vault API v3** (`/v3/vault/setup-tokens`, `/v3/vault/payment-tokens`, `DELETE`) | Save PayPal once without charging; **Revoke** deletes the token |
+| **Payments API v2** (`/v2/payments/captures/{id}/refund`) | One-click **Undo** and the agent's `refund_order` tool (full or partial) |
+| **Webhooks** + `/v1/notifications/verify-webhook-signature` | Keep order status in sync (`PAYMENT.CAPTURE.COMPLETED` / `REFUNDED`) |
+
+## How we use AI
+**Anthropic Claude** (Messages API with tool use, model `claude-sonnet-5-5`, set with `ANTHROPIC_MODEL`) is the shopping agent. It runs a server-side tool-use loop (`server/src/agent.js`) with **13 tools** (`server/src/tools.js`):
+- Shopping: `search_products`, `set_budget`, `add_to_cart`, `remove_from_cart`, `view_cart`
+- PayPal: `checkout`, `get_order_status`, `list_my_orders`, `refund_order`
+- Autopilot: `set_spending_limits`, `create_price_watch`, `cancel_price_watch`, `autopilot_status`
+
+Claude works out what the shopper needs, compares options, asks for confirmation before checkout, and sets up price watches. **Money rules are not left to the model:** budgets, per-order and monthly limits, and prices are checked in server code before every charge.
+
+## Sponsor integrations
+- **AG Grid** (Community, `ag-grid-react`): the Dashboard grids for price watches, orders and the Autopilot activity log, with custom cell renderers, action buttons (Undo / Stop / Simulate), filters, quick search, pagination and CSV export (`client/src/Dashboard.jsx`)
+- **Channel3**: live product search across real merchants. For each product we pick the cheapest in-stock offer, with real images, merchant links and discounts. Autopilot refreshes prices from the product detail endpoint (`server/src/catalog.js`)
+- **Render**: hosts the live demo through the `render.yaml` Blueprint (build, start, health check, env vars)
 
 ## Architecture
 ```
